@@ -68,30 +68,44 @@ def strip_scores(model, dataloader, num_bases: int = 32, num_perturbations: int 
     base_indices = indices[:num_bases]
     base_images = all_images[base_indices].to(device, dtype=torch.float32)
 
+    import numpy as np
     entropies_list = []
 
     with torch.no_grad():
         for i in range(num_bases):
             base_img = base_images[i]
-            
-            # Create perturbations
-            # We need num_perturbations other images. 
-            # We can sample from the whole pool (excluding the current base if we want, but collision prob is low)
             perturb_indices = torch.randint(0, len(all_images), (num_perturbations,))
             perturb_images = all_images[perturb_indices].to(device, dtype=torch.float32)
-            
-            # Superimpose: 0.5 * base + 0.5 * other
-            # base_img is (C, H, W), perturb_images is (N, C, H, W)
-            # Broadcast base_img
             mixed_images = 0.5 * base_img.unsqueeze(0) + 0.5 * perturb_images
-            
             logits = model(mixed_images)
             entropies = prediction_entropy(logits)
-            
-            # Aggregate entropy for this base sample
             mean_entropy = entropies.mean().item()
             entropies_list.append(mean_entropy)
 
+    # Compute summary statistics and verdict
+    mean_entropy = float(np.mean(entropies_list)) if entropies_list else 0.0
+    # Example threshold for STRIP (tune as needed)
+    threshold = 1
+    verdict = "attack" if mean_entropy < threshold else "clean"
+    suspected_target = None  # STRIP does not identify a target class
+
+    # Try to get dataset name
+    dataset_name = getattr(getattr(dataloader, 'dataset', None), '__class__', None)
+    dataset_name = dataset_name.__name__.lower() if dataset_name else "unknown"
+
     return {
-        "entropies": entropies_list
+        "defense": "strip",
+        "entropies": entropies_list,
+        "mean_entropy": mean_entropy,
+        "verdict": verdict,
+        "suspected_target": suspected_target,
+        "thresholds": {
+            "mean_entropy": threshold
+        },
+        "num_bases": num_bases,
+        "num_perturbations": num_perturbations,
+        "parameters": {
+            "device": str(device),
+        },
+        "dataset": dataset_name
     }

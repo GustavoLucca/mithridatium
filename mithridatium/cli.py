@@ -10,7 +10,7 @@ from mithridatium.defenses.mmbd import run_mmbd
 
 
 VERSION = "0.1.0"
-DEFENSES = {"spectral", "mmbd"}
+DEFENSES = {"spectral", "mmbd", "strip"}
 
 EXIT_USAGE_ERROR = 64     # invalid CLI usage (e.g., unsupported --defense)
 EXIT_NO_INPUT = 66        # input file missing/not a file
@@ -183,6 +183,12 @@ def detect(
             device = get_device(0)
             mdl = mdl.to(device)
             results = run_mmbd(mdl, config)
+        elif d == "strip":
+            from mithridatium.defenses.strip import strip_scores
+            # Move model to device for STRIP
+            device = next(mdl.parameters()).device if next(mdl.parameters(), None) is not None else None
+            mdl = mdl.to(device) if device is not None else mdl
+            results = strip_scores(mdl, test_loader)
         else:
             results = {"suspected_backdoor": False, "num_flagged": 0, "top_eigenvalue": 0.0}
 
